@@ -1,7 +1,13 @@
-package assistant
+package ttsvoice
 
 // Names and IDs from https://yandex.ru/dev/dialogs/alice/doc/ru/sounds.
-var ttsSoundCatalog = []ttsCatalogEntry{
+type Sound struct {
+	ID   string `json:"id"`
+	Name string `json:"name"`
+}
+
+// Sounds is Alice's sound library; an ID outside it silences the whole answer.
+var Sounds = []Sound{
 	// things
 	{ID: "alice-sounds-things-chainsaw-1.opus", Name: "Бензопила"},
 	{ID: "alice-sounds-things-explosion-1.opus", Name: "Взрыв"},

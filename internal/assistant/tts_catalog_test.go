@@ -64,3 +64,30 @@ func TestTTSCatalogRespectsDisabledMarkup(t *testing.T) {
 		t.Fatal("executed catalog search with TTS markup disabled")
 	}
 }
+
+func TestTTSCatalogDescribesVoicesForCasting(t *testing.T) {
+	all, err := searchTTSCatalog(`{"kind":"voice","query":"все"}`)
+	if err != nil || len(all) < 10 {
+		t.Fatalf("all voices = %d, err = %v", len(all), err)
+	}
+	male, err := searchTTSCatalog(`{"kind":"voice","query":"мужской низкий"}`)
+	if err != nil || len(male) == 0 {
+		t.Fatalf("male low voices = %v, err = %v", male, err)
+	}
+	for _, v := range male {
+		if v.Kind != "мужской" || v.Emotions == nil || *v.Emotions {
+			t.Fatalf("unexpected voice for «мужской низкий»: %+v", v)
+		}
+	}
+	emotion, err := searchTTSCatalog(`{"kind":"emotion","query":"злость"}`)
+	if err != nil || len(emotion) != 1 || emotion[0].ID != "negative" {
+		t.Fatalf("emotion for anger = %+v, err = %v", emotion, err)
+	}
+	effects, err := searchTTSCatalog(`{"kind":"effect","query":"все"}`)
+	if err != nil || len(effects) != 7 {
+		t.Fatalf("effects = %+v, err = %v", effects, err)
+	}
+	if _, err := searchTTSCatalog(`{"kind":"audio","query":"все"}`); err != nil {
+		t.Fatalf("audio «все» must search by words, err = %v", err)
+	}
+}

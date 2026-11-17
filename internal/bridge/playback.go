@@ -14,13 +14,17 @@ func nativePlaybackState(req *request.TAliceRequestProto) sound.PlaybackState {
 	if state == nil {
 		raw := r.GetDeviceStateRaw()
 		if len(raw) == 0 || len(raw) > 1<<20 {
-			return sound.PlaybackState{}
+			return sound.PlaybackState{SoundLevel: -1}
 		}
 		state = new(device.TDeviceState)
 		if proto.Unmarshal(raw, state) != nil {
-			return sound.PlaybackState{}
+			return sound.PlaybackState{SoundLevel: -1}
 		}
 	}
 	p := state.GetAudioPlayer()
-	return sound.PlaybackState{Present: true, OffsetKnown: p != nil && p.OffsetMs != nil, StreamID: p.GetCurrentlyPlaying().GetStreamId(), OffsetMS: max(0, int64(p.GetOffsetMs())), PlayerState: p.GetPlayerState().String()}
+	level := -1
+	if state.SoundLevel != nil {
+		level = int(state.GetSoundLevel())
+	}
+	return sound.PlaybackState{SoundLevel: level, Present: true, OffsetKnown: p != nil && p.OffsetMs != nil, StreamID: p.GetCurrentlyPlaying().GetStreamId(), OffsetMS: max(0, int64(p.GetOffsetMs())), PlayerState: p.GetPlayerState().String()}
 }

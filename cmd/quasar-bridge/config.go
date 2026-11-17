@@ -48,6 +48,8 @@ type config struct {
 	LLMTTSMarkup       bool                 `json:"llm_tts_markup"`
 	HomeWarmArea       string               `json:"home_warm_area"`
 	ListenAfterReply   bool                 `json:"listen_after_reply"`
+	WhisperSoundLevel  int                  `json:"whisper_sound_level"`
+	WhisperAuto        bool                 `json:"whisper_auto"`
 	Routing            bridge.RoutingConfig `json:"routing"`
 }
 
@@ -66,7 +68,7 @@ func readConfigForCommand(path string, modelOptional bool) (config, error) {
 }
 
 func parseConfig(raw []byte, modelOptional bool) (config, error) {
-	cfg := config{DialogueContext: dialogue.DefaultConfig(), Routing: bridge.DefaultRoutingConfig(), ConversationLog: journal.DefaultConfig(), AssistantTools: assistant.DefaultConfig(), LocalProgress: progressConfig{AfterMS: 2000, IntervalMS: 4000}, LLMAPI: "chat_completions", LLMMaxOutputTokens: 4096, ListenAfterReply: true, LLMStripPrefixes: bridge.DefaultStripPrefixes(), LLMTTSMarkup: true}
+	cfg := config{DialogueContext: dialogue.DefaultConfig(), Routing: bridge.DefaultRoutingConfig(), ConversationLog: journal.DefaultConfig(), AssistantTools: assistant.DefaultConfig(), LocalProgress: progressConfig{AfterMS: 2000, IntervalMS: 4000}, LLMAPI: "chat_completions", LLMMaxOutputTokens: 4096, ListenAfterReply: true, LLMStripPrefixes: bridge.DefaultStripPrefixes(), LLMTTSMarkup: true, WhisperSoundLevel: 3}
 	if json.Unmarshal(raw, &cfg, json.RejectUnknownMembers(true)) != nil {
 		return cfg, errors.New("invalid configuration JSON")
 	}
@@ -187,6 +189,9 @@ func parseConfig(raw []byte, modelOptional bool) (config, error) {
 		if _, err := netip.ParseAddr(ip); err != nil {
 			return cfg, errors.New("allowed_ips must contain IP addresses")
 		}
+	}
+	if cfg.WhisperSoundLevel < 0 || cfg.WhisperSoundLevel > 10 {
+		return cfg, errors.New("whisper_sound_level must be between 0 and 10")
 	}
 	if cfg.LLMBaseURL != "" && !validEndpoint(cfg.LLMBaseURL, "http", "https") {
 		return cfg, errors.New("invalid LLM URL")

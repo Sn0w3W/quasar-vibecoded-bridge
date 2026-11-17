@@ -5,6 +5,7 @@ go 1.27.3
 require (
 	github.com/coder/websocket v1.8.15
 	github.com/modelcontextprotocol/go-sdk v1.8.0
+	github.com/pion/opus v0.1.0
 	github.com/skrashevich/quasar-go-genproto v0.3.0
 	github.com/skrashevich/station-airplay v0.2.2
 	golang.org/x/net v0.62.0
@@ -35,7 +36,6 @@ require (
 	golang.org/x/text v0.43.0 // indirect
 	golang.org/x/time v0.15.0 // indirect
 	golang.org/x/tools v0.51.0 // indirect
-	gopkg.in/yaml.v3 v3.0.1 // indirect
 	howett.net/plist v1.0.1 // indirect
 )
 

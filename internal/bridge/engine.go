@@ -42,6 +42,9 @@ type Engine struct {
 	Music         MusicStarter
 	Dialogue      *dialogue.Store
 	TTSMarkup     bool
+	// WhisperSoundLevel lowers the speaker for a whispered answer, like the
+	// cloud's own whisper replies. Zero leaves the volume alone.
+	WhisperSoundLevel int
 	// StripPrefixes are model addresses removed only from outbound requests.
 	// An empty list disables stripping.
 	StripPrefixes []string
@@ -213,6 +216,7 @@ func (e *Engine) Fallback(ctx context.Context, text string) (Resolution, error) 
 		return r, err
 	}
 	r.setModelAnswer(answer, e.TTSMarkup)
+	e.prepareSpeech(ctx, &r, text)
 	if !e.dialogue().Commit(ctx, ticket, text, r.Answer, private) {
 		return Resolution{Route: r.Route}, context.Canceled
 	}

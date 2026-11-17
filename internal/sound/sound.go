@@ -23,6 +23,7 @@ type PlaybackState struct {
 	StreamID    string
 	OffsetMS    int64
 	PlayerState string
+	SoundLevel  int // Speaker volume 0..10 reported with the request; -1 unknown.
 }
 type playbackKey struct{}
 

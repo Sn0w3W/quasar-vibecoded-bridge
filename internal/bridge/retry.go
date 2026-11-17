@@ -85,6 +85,7 @@ func (e *Engine) retryQuestion(ctx context.Context, ticket dialogue.Ticket) (Res
 		return result, errors.New("LLM returned no retry answer")
 	}
 	result.setModelAnswer(answer, e.TTSMarkup)
+	e.prepareSpeech(ctx, &result, replay.Question)
 	if !e.dialogue().CommitRetry(ctx, ticket, result.Answer) {
 		return Resolution{Route: result.Route}, context.Canceled
 	}
