@@ -505,6 +505,7 @@ func (n *Native) Server(ctx context.Context, k websocket.MessageType, data []byt
 					n.discardSound(p)
 					result.Answer = "Сейчас не получилось получить ответ локальной модели."
 				}
+				n.prepareSpeech(p, &result, query)
 				_ = n.sendCancel(p.ctx, p.id)
 				if err := n.reply(p, result); err != nil {
 					slog.Warn("native_reply_failed", "request", requestTag(p.id))
@@ -668,10 +669,24 @@ func (n *Native) maybeResolve(p *nativeRequest) {
 				return
 			}
 		}
+		n.prepareSpeech(p, &result, text)
 		if err := n.reply(p, result); err != nil {
 			slog.Warn("native_reply_failed", "request", requestTag(p.id))
 		}
 	})
+}
+
+// speechPreparer applies the whisper rules to text Bridge speaks itself.
+type speechPreparer interface {
+	PrepareSpeech(context.Context, *Resolution, string)
+}
+
+// prepareSpeech gives every local answer, error phrases included, the same
+// voice rules as a model answer: a whispered request is answered in a whisper.
+func (n *Native) prepareSpeech(p *nativeRequest, r *Resolution, question string) {
+	if preparer, ok := n.resolver.(speechPreparer); ok {
+		preparer.PrepareSpeech(p.ctx, r, question)
+	}
 }
 func (n *Native) sendCancel(ctx context.Context, id string) error {
 	m := &client.TClientMessage{Message: &client.TClientMessage_Event{Event: &client.TClientMessage_TEvent{Header: &header.TEventHeader{MessageId: newID()}, Event: &client.TClientMessage_TEvent_CancelRequest{CancelRequest: &cancellation.TCancelRequest{RequestMessageId: id, Reason: &cancellation.TCancelRequest_LocalExecution{LocalExecution: &cancellation.TCancelRequest_TReasonLocalExecution{}}}}}}}

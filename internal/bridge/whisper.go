@@ -91,6 +91,15 @@ func (e *Engine) prepareSpeech(ctx context.Context, r *Resolution, question stri
 	}
 }
 
+// PrepareSpeech applies the whisper rules to text Bridge speaks itself: local
+// commands (AirPlay, Home Assistant, playback, music, recovery, dialogue
+// commands) and error phrases. A model answer already went through them.
+func (e *Engine) PrepareSpeech(ctx context.Context, r *Resolution, question string) {
+	if r.Answer != "" && r.speech == "" {
+		e.prepareSpeech(ctx, r, question)
+	}
+}
+
 // userWhispered reports a whispered voice request found by the microphone detector.
 func userWhispered(ctx context.Context) bool {
 	r, ok := whisperdetect.Detect(ctx)
