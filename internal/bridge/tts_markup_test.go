@@ -39,7 +39,7 @@ func TestLLMTTSMarkupDisabled(t *testing.T) {
 }
 
 func TestLocalTTSMarkupStaysInSynthesis(t *testing.T) {
-	const speech = `<speaker is_whisper="true">П+ауза sil <[500]> и транскрипция <[t r a n s k rr ii p c y j schwa]>. <speaker voice='zahar' effect="megaphone" emotion="good" speed="1.2">Готово. <speaker effect="-" audio="alice-sounds-game-win-1.opus" lang="ru-RU">Дальше C++ и 2+2.`
+	const speech = `<speaker is_whisper="true">П+ауза sil <[500]> и транскрипция <[t r a n s k rr ii p c y j schwa]>. <speaker voice='zahar' effect="megaphone" speed="1.2">Готово. <speaker effect="-" audio="alice-sounds-game-win-1.opus" lang="ru-RU">Дальше C++ и 2+2.`
 	const plain = "Пауза и транскрипция. Готово. Дальше C++ и 2+2."
 
 	for _, name := range []string{"immediate", "deferred"} {

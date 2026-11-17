@@ -28,14 +28,23 @@ import (
 	"quasarbridge/internal/dialogue"
 	"quasarbridge/internal/reply"
 	"quasarbridge/internal/sound"
+	"quasarbridge/internal/whisperdetect"
 	"quasarbridge/internal/wire"
 )
 
 type Resolution struct {
-	Route  string
-	Answer string
-	speech string // Optional TTS text with markup, separate from the displayed answer.
+	Route        string
+	Answer       string
+	speech       string // Optional TTS text with markup, separate from the displayed answer.
+	whisperLevel int    // Speaker volume for a whispered answer; zero keeps it.
 }
+
+// Speech is the synthesis text with markup, empty when it equals Answer.
+func (r Resolution) Speech() string { return r.speech }
+
+// WhisperLevel is the speaker volume requested for a whispered answer.
+func (r Resolution) WhisperLevel() int { return r.whisperLevel }
+
 type Resolver interface {
 	Resolve(context.Context, string) (Resolution, error)
 }
@@ -80,6 +89,11 @@ type nativeRequest struct {
 	soundRequest                    *sound.Request
 	soundDirective                  *soundDirective
 	soundSealed                     bool
+	whisperLevel                    int
+	soundLevel                      int // Speaker volume when the request started; -1 unknown.
+	whisper                         *whisperdetect.Detector
+	whisperDone                     chan struct{}
+	whisperOnce                     sync.Once
 	expires                         *time.Timer
 }
 type Native struct {
@@ -100,6 +114,10 @@ type Native struct {
 	DecisionDelay    time.Duration
 	ProgressAfter    time.Duration
 	ProgressInterval time.Duration
+	detectors        map[uint32]*nativeRequest
+	// DetectWhisper analyses the microphone of voice requests so a whispered
+	// question gets a whispered local answer.
+	DetectWhisper bool
 }
 
 func NewNative(ctx context.Context, up, down Sender, resolver Resolver) *Native {
@@ -120,6 +138,7 @@ func (n *Native) Close() {
 func (n *Native) Client(ctx context.Context, k websocket.MessageType, data []byte) error {
 	f := wire.Decode(data, wire.ClientToServer)
 	if f.Client == nil || f.Client.GetEvent() == nil {
+		n.clientAudio(f, data)
 		return n.up(ctx, k, data)
 	}
 	e := f.Client.GetEvent()
@@ -165,8 +184,8 @@ func (n *Native) Client(ctx context.Context, k websocket.MessageType, data []byt
 		pctx = reply.WithPolicy(pctx)
 		playerState := nativePlaybackState(req)
 		pctx = sound.WithPlaybackState(pctx, playerState)
-		slog.Info("native_player_state", "request", requestTag(id), "present", playerState.Present, "player_state", playerState.PlayerState, "offset_known", playerState.OffsetKnown, "offset_ms", playerState.OffsetMS, "has_stream", playerState.StreamID != "", "stream_tag", requestTag(playerState.StreamID))
-		p := &nativeRequest{id: id, request: proto.Clone(req).(*request.TAliceRequestProto), text: req.GetRequest().GetEvent().GetText(), ctx: pctx, cancel: cancel}
+		slog.Info("native_player_state", "request", requestTag(id), "present", playerState.Present, "sound_level", playerState.SoundLevel, "player_state", playerState.PlayerState, "offset_known", playerState.OffsetKnown, "offset_ms", playerState.OffsetMS, "has_stream", playerState.StreamID != "", "stream_tag", requestTag(playerState.StreamID))
+		p := &nativeRequest{id: id, request: proto.Clone(req).(*request.TAliceRequestProto), text: req.GetRequest().GetEvent().GetText(), ctx: pctx, cancel: cancel, soundLevel: playerState.SoundLevel}
 		p.ctx = sound.WithPlayer(p.ctx, func(ctx context.Context, request sound.Request) error {
 			return n.queueSound(ctx, p, request)
 		})
@@ -175,7 +194,7 @@ func (n *Native) Client(ctx context.Context, k websocket.MessageType, data []byt
 		p.input = append([]byte{}, data...)
 		p.gated = !p.isText || n.GateText
 
-		slog.Info("native_request_shape", "request", requestTag(id), "text_bytes", len(p.text), "event_type", req.GetRequest().GetEvent().GetType().String(), "stream", e.GetHeader().GetStreamId(), "unknown_request_bytes", len(req.ProtoReflect().GetUnknown()), "payload_bytes", len(req.GetRequest().GetEvent().GetPayloadRaw()))
+		slog.Info("native_request_shape", "request", requestTag(id), "format", req.GetFormat(), "text_bytes", len(p.text), "event_type", req.GetRequest().GetEvent().GetType().String(), "stream", e.GetHeader().GetStreamId(), "unknown_request_bytes", len(req.ProtoReflect().GetUnknown()), "payload_bytes", len(req.GetRequest().GetEvent().GetPayloadRaw()))
 		n.mu.Lock()
 		if n.requests[id] != nil {
 			n.mu.Unlock()
@@ -210,8 +229,16 @@ func (n *Native) Client(ctx context.Context, k websocket.MessageType, data []byt
 					delete(n.streams, stream)
 				}
 			}
+			for stream, q := range n.detectors {
+				if q == p {
+					delete(n.detectors, stream)
+				}
+			}
 		})
 		n.requests[id] = p
+		if !p.isText {
+			n.beginWhisperDetection(p, uint32(e.GetHeader().GetStreamId()), req.GetFormat())
+		}
 		n.mu.Unlock()
 		if p.gated {
 			gated, err := wire.EnableApproval(f)
@@ -487,7 +514,7 @@ func (n *Native) Server(ctx context.Context, k websocket.MessageType, data []byt
 			return nil
 		}
 	}
-	emptyFinal := false
+	emptyFinal, endWhisper := false, false
 	switch f.Kind() {
 	case "AliceResponse":
 		if !p.cloud {
@@ -507,6 +534,7 @@ func (n *Native) Server(ctx context.Context, k websocket.MessageType, data []byt
 		}
 		if asr.GetEndOfUtt() {
 			p.final = true
+			endWhisper = p.whisper != nil
 			slog.Info("native_asr_final", "request", requestTag(p.id), "hypotheses", len(asr.GetRecognition()), "code", asr.GetResponseCode().String(), "aggregate_present", aggregate != nil, "aggregate_final", aggregate.GetIsFinal(), "aggregate_index", aggregate.GetIndex(), "aggregate_text_bytes", len(aggregate.GetRecognizedText()))
 		}
 		if asr.GetEndOfUtt() && len(asr.GetRecognition()) > 0 {
@@ -524,6 +552,9 @@ func (n *Native) Server(ctx context.Context, k websocket.MessageType, data []byt
 
 	}
 	n.mu.Unlock()
+	if endWhisper {
+		n.finishWhisper(p)
+	}
 	if emptyFinal {
 		if listener, ok := n.resolver.(interface{ EmptyInput(context.Context) }); ok {
 			listener.EmptyInput(p.ctx)
@@ -651,6 +682,9 @@ func (n *Native) sendCancel(ctx context.Context, id string) error {
 	return n.up(ctx, websocket.MessageBinary, b)
 }
 func (n *Native) reply(p *nativeRequest, result Resolution) error {
+	n.mu.Lock()
+	p.whisperLevel = result.whisperLevel
+	n.mu.Unlock()
 	text := result.Answer
 	speech := cmp.Or(result.speech, text)
 	if p.streaming {
@@ -667,7 +701,7 @@ func (n *Native) reply(p *nativeRequest, result Resolution) error {
 		answer.VoiceResponse.HasVoiceResponse = false
 		answer.VoiceResponse.OutputSpeech.Text = new("")
 	}
-	answer.Response.Directives = n.takeSound(p)
+	answer.Response.Directives = n.takeDirectives(p)
 	m := &server.TServerMessage{Message: &server.TServerMessage_Event{Event: &server.TServerMessage_TEvent{Header: &header.TEventHeader{MessageId: newID(), RefMessageId: p.id}, Event: &server.TServerMessage_TEvent_AliceResponse{AliceResponse: answer}}}}
 	b, err := (wire.Frame{Server: m, Prefix: []byte("AAPI")}).Marshal()
 	if err != nil {

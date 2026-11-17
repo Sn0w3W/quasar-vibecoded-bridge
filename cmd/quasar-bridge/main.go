@@ -201,7 +201,7 @@ func main() {
 	}}
 	logs := new(journal.Writer)
 	lc := newLLMClient(cfg, os.Getenv("QUASAR_LLM_API_KEY"))
-	engine := &bridge.Engine{LLM: lc, Dialogue: dialogue.New(cfg.DialogueContext), StripPrefixes: cfg.LLMStripPrefixes, TTSMarkup: cfg.LLMTTSMarkup}
+	engine := &bridge.Engine{LLM: lc, Dialogue: dialogue.New(cfg.DialogueContext), StripPrefixes: cfg.LLMStripPrefixes, TTSMarkup: cfg.LLMTTSMarkup, WhisperSoundLevel: cfg.WhisperSoundLevel}
 	// Recovery is a direct command path, independent of assistant tool settings
 	// and of the availability of either the classifier or the dialogue model.
 	engine.Recovery = func(ctx context.Context, action string) (string, error) {
@@ -304,7 +304,12 @@ func main() {
 			slog.Error("query failed", "route", r.Route, "error", err)
 			os.Exit(1)
 		}
-		data, _ := json.Marshal(r)
+		data, _ := json.Marshal(struct {
+			Route        string
+			Answer       string
+			Speech       string `json:",omitempty"`
+			WhisperLevel int    `json:",omitempty"`
+		}{r.Route, r.Answer, r.Speech(), r.WhisperLevel()})
 		fmt.Println(string(data))
 		return
 	}
@@ -337,6 +342,7 @@ func main() {
 			n := bridge.NewNative(ctx, up, down, engine)
 			n.GateText = false
 			n.ShouldListen = cfg.ListenAfterReply
+			n.DetectWhisper = cfg.WhisperAuto
 			if cfg.LocalProgress.Enabled {
 				n.ProgressAfter = time.Duration(cfg.LocalProgress.AfterMS) * time.Millisecond
 				n.ProgressInterval = time.Duration(cfg.LocalProgress.IntervalMS) * time.Millisecond

@@ -122,7 +122,7 @@ func (n *Native) deferredPart(p *nativeRequest, text string, last bool) error {
 		if silentPlayback {
 			voice = ""
 		}
-		base.Directives = n.takeSound(p)
+		base.Directives = n.takeDirectives(p)
 	}
 	if text != "" {
 		base.Text = new(text)

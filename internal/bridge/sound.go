@@ -62,6 +62,21 @@ func (n *Native) takeSound(p *nativeRequest) []*directives.TDirective {
 	return []*directives.TDirective{directive}
 }
 
+// takeDirectives seals the answer's queued sound and adds the whisper volume.
+func (n *Native) takeDirectives(p *nativeRequest) []*directives.TDirective {
+	out := n.takeSound(p)
+	n.mu.Lock()
+	level := p.whisperLevel
+	n.mu.Unlock()
+	// Like the cloud's whisper reply: lower the volume, then the speech
+	// placeholder, so the speaker applies the level before it talks. The cloud
+	// sends nothing when the speaker is already at or below that level.
+	if level > 0 && (p.soundLevel < 0 || p.soundLevel > level) {
+		out = append([]*directives.TDirective{whisperVolumeDirective(level), ttsPlaceholderDirective()}, out...)
+	}
+	return out
+}
+
 func (n *Native) hasSilentPlayback(p *nativeRequest) bool {
 	n.mu.Lock()
 	defer n.mu.Unlock()

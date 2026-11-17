@@ -40,9 +40,9 @@ func (t *Tools) Definitions() []llm.Tool {
 	var tools []llm.Tool
 	if t.TTSMarkup {
 		tools = append(tools, definition("search_tts_catalog",
-			"Найти точный ID голоса или звука для TTS-разметки. kind — voice для <speaker voice> или audio для <speaker audio>. query — короткое название или ID, например «Захар» или «мяуканье». Возвращает до 8 совпадений из встроенного каталога.",
+			"Подобрать голос, эмоцию, эффект или звук для TTS-разметки по проверенному каталогу. kind — voice (<speaker voice>, с полом, тембром и тем, умеет ли голос шептать и выражать эмоции), emotion, effect или audio (<speaker audio>). query — название, ID или описание, например «Захар», «мужской», «раздражение», «мяуканье»; «все» возвращает весь список голосов, эмоций или эффектов. Иначе возвращает до 8 совпадений.",
 			map[string]any{
-				"kind":  map[string]any{"type": "string", "enum": []string{"voice", "audio"}},
+				"kind":  map[string]any{"type": "string", "enum": []string{"voice", "emotion", "effect", "audio"}},
 				"query": map[string]string{"type": "string"},
 			}, []string{"kind", "query"}))
 	}
